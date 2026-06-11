@@ -6,7 +6,7 @@ if exists('g:loaded_amnesia')
 endif
 let g:loaded_amnesia = 1
 
-command! -range -nargs=* -bar MDCode call amnesia#code_block({'line1': <line1>, 'line2': <line2>, 'range': <range>}, <q-args>)
+command! -range -nargs=* -bar -complete=customlist,amnesia#complete_lang MDCode call amnesia#code_block({'line1': <line1>, 'line2': <line2>, 'range': <range>}, <q-args>)
 command! -range -bar MDH1 call amnesia#h1({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDH2 call amnesia#h2({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDH3 call amnesia#h3({'line1': <line1>, 'line2': <line2>, 'range': <range>})
@@ -24,3 +24,19 @@ command! -range -bar MDTable call amnesia#table({'line1': <line1>, 'line2': <lin
 command! -range -bar MDCheckDone call amnesia#checkbox_done({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDFootnote call amnesia#footnote({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar IndentTree call amnesia#indent_tree({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+
+" <Plug>マッピング（デフォルトキーは提供しない・利用者が任意に割当）
+for s:pair in [
+    \ ['h1', 'MDH1'], ['h2', 'MDH2'], ['h3', 'MDH3'],
+    \ ['bullet', 'MDBullet'], ['number', 'MDNumber'],
+    \ ['check', 'MDCheck'], ['check-done', 'MDCheckDone'],
+    \ ['quote', 'MDQuote'], ['bold', 'MDBold'], ['italic', 'MDItalic'],
+    \ ['inline-code', 'MDInlineCode'], ['code', 'MDCode'],
+    \ ['link', 'MDLink'], ['image', 'MDImage'], ['hr', 'MDHR'],
+    \ ['table', 'MDTable'], ['footnote', 'MDFootnote'],
+    \ ['indent-tree', 'IndentTree'],
+    \ ]
+    execute printf('nnoremap <silent> <Plug>(amnesia-%s) :%s<CR>', s:pair[0], s:pair[1])
+    execute printf('xnoremap <silent> <Plug>(amnesia-%s) :%s<CR>', s:pair[0], s:pair[1])
+endfor
+unlet s:pair

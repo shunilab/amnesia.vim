@@ -450,10 +450,14 @@ function! s:normalize_checkbox_line(line, checked) abort
     if a:line =~ '^\s*$'
         return a:line
     endif
-    let l:match = matchlist(a:line, '^\(\s*\)\%([-*+]\s*\)\?\[[ xX]\]\s*\(.*\)$')
+    let l:match = matchlist(a:line, '^\(\s*\)\%([-*+]\s*\)\?\[\([ xX]\)\]\s*\(.*\)$')
     let l:mark = a:checked ? 'x' : ' '
     if len(l:match) > 0
-        return l:match[1] . '- [' . l:mark . '] ' . l:match[2]
+        " 同じ状態の再適用はトグル解除（bullet/quoteと一貫）
+        if tolower(l:match[2]) ==# l:mark
+            return l:match[1] . l:match[3]
+        endif
+        return l:match[1] . '- [' . l:mark . '] ' . l:match[3]
     endif
     let l:parts = matchlist(a:line, '^\(\s*\)\(.*\)$')
     return l:parts[1] . '- [' . l:mark . '] ' . l:parts[2]
@@ -939,9 +943,19 @@ function! s:process_image(lines) abort
     return ['![' . l:selected . ']()']
 endfunction
 
-" 水平線を挿入
+" 水平線を挿入（行中に挿すとMDが壊れるためカーソル行の下に1行で挿入）
 function! amnesia#hr(opts) abort
-    call s:insert_at_cursor('---')
+    call append(line('.'), '---')
+    call cursor(line('.') + 1, 1)
+endfunction
+
+" MDCode の言語名補完
+function! amnesia#complete_lang(arglead, cmdline, cursorpos) abort
+    let l:langs = ['bash', 'c', 'cpp', 'csharp', 'css', 'dart', 'diff', 'dockerfile',
+        \ 'go', 'html', 'java', 'javascript', 'json', 'kotlin', 'lua', 'makefile',
+        \ 'markdown', 'mermaid', 'php', 'powershell', 'python', 'ruby', 'rust',
+        \ 'scss', 'sh', 'sql', 'swift', 'toml', 'typescript', 'vim', 'xml', 'yaml', 'zsh']
+    return filter(l:langs, 'v:val =~# "^" . a:arglead')
 endfunction
 
 " テーブルを挿入
