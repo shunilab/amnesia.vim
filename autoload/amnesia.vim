@@ -168,7 +168,7 @@ function! s:get_visual_selection() abort
     let [line_end, column_end] = getpos("'>")[1:2]
     let lines = getline(line_start, line_end)
     if len(lines) == 0
-        return ['', line_start, line_end, '', '']
+        return [line_start, line_end, [], '', '']
     endif
 
     let prefix = ''
@@ -621,8 +621,9 @@ function! s:build_tree_lines(lines) abort
 
         let l:prefix_parts = []
         if l:entry.depth >= 2
+            " 列cは深さc+1の祖先に対応（深さ0の根は罫線列を持たない）
             for l:depth in range(0, l:entry.depth - 2)
-                call add(l:prefix_parts, get(l:ancestor_last, l:depth, 0) ? '    ' : '│   ')
+                call add(l:prefix_parts, get(l:ancestor_last, l:depth + 1, 0) ? '    ' : '│   ')
             endfor
         endif
         if l:entry.depth > 0
@@ -974,12 +975,12 @@ function! amnesia#footnote(opts) abort
 endfunction
 
 function! s:process_footnote(lines) abort
+    let l:text = join(a:lines, ' ')
     let ref = substitute(a:lines[0], '\s\+', '_', 'g')
-    let a:lines[0] = '[^' . ref . ']'
     " 脚注テキストを文書末尾に追加
     let last_line = line('$')
-    call append(last_line, ['', '[^' . ref . ']: ' . join(a:lines, ' ')])
-    return [a:lines[0]]
+    call append(last_line, ['', '[^' . ref . ']: ' . l:text])
+    return ['[^' . ref . ']']
 endfunction
 
 function! amnesia#indent_tree(opts) abort
