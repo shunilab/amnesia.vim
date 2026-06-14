@@ -997,6 +997,10 @@ function! s:process_footnote(lines) abort
     return ['[^' . ref . ']']
 endfunction
 
+function! amnesia#filetype() abort
+    setlocal filetype=markdown
+endfunction
+
 function! amnesia#indent_tree(opts) abort
     if get(a:opts, 'range', 0) == 0
         echoerr 'IndentTree requires a selected line range'

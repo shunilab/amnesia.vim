@@ -23,6 +23,7 @@ command! -range -bar MDInlineCode call amnesia#inline_code({'line1': <line1>, 'l
 command! -range -bar MDTable call amnesia#table({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDCheckDone call amnesia#checkbox_done({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDFootnote call amnesia#footnote({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDFiletype setlocal filetype=markdown
 command! -range -bar IndentTree call amnesia#indent_tree({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 
 " <Plug>マッピング（デフォルトキーは提供しない・利用者が任意に割当）
@@ -34,6 +35,7 @@ for s:pair in [
     \ ['inline-code', 'MDInlineCode'], ['code', 'MDCode'],
     \ ['link', 'MDLink'], ['image', 'MDImage'], ['hr', 'MDHR'],
     \ ['table', 'MDTable'], ['footnote', 'MDFootnote'],
+    \ ['filetype', 'MDFiletype'],
     \ ['indent-tree', 'IndentTree'],
     \ ]
     execute printf('nnoremap <silent> <Plug>(amnesia-%s) :%s<CR>', s:pair[0], s:pair[1])
