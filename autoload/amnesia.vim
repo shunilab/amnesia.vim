@@ -30,6 +30,18 @@ function! s:has_visual_selection(opts) abort
     return line_start != line_end || column_start != column_end
 endfunction
 
+function! s:has_explicit_line_range(opts) abort
+    return get(a:opts, 'range', 0) > 0 && !s:has_visual_selection(a:opts)
+endfunction
+
+function! s:reject_explicit_line_range(opts, command_name) abort
+    if s:has_explicit_line_range(a:opts)
+        echoerr a:command_name . ' does not support Ex line ranges'
+        return 1
+    endif
+    return 0
+endfunction
+
 function! s:move_cursor_and_startinsert(line_num, col) abort
     call cursor(a:line_num, a:col + 1)
     startinsert
@@ -237,6 +249,28 @@ function! s:process_visual_selection(process_fn, opts, ...) abort
             return 1
         endif
     endif
+    return 0
+endfunction
+
+function! s:process_line_range(process_fn, opts, ...) abort
+    let l:PostProcess = a:0 > 0 ? a:1 : v:null
+    if s:process_visual_selection(a:process_fn, a:opts, l:PostProcess)
+        return 1
+    endif
+
+    if get(a:opts, 'range', 0) > 0
+        let l:start_line = a:opts.line1
+        let l:end_line = a:opts.line2
+        let l:new_lines = a:process_fn(getline(l:start_line, l:end_line))
+        call s:replace_lines(l:start_line, l:end_line, l:new_lines)
+        if type(l:PostProcess) == type(function('tr'))
+            call l:PostProcess(l:start_line)
+        else
+            call cursor(l:start_line, 1)
+        endif
+        return 1
+    endif
+
     return 0
 endfunction
 
@@ -656,7 +690,7 @@ function! amnesia#code_block(opts, ...) abort
         return
     endif
 
-    let processed = s:process_visual_selection(
+    let processed = s:process_line_range(
         \ {lines -> s:process_code_block(lines, l:code_spec.fence)},
         \ a:opts,
         \ {start_line -> cursor(start_line + 1, 1)}
@@ -689,6 +723,9 @@ endfunction
 
 " 見出し1を挿入
 function! amnesia#h1(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH1')
+        return
+    endif
     if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 1)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h1_current_line'))
     endif
@@ -696,6 +733,9 @@ endfunction
 
 " 見出し2を挿入
 function! amnesia#h2(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH2')
+        return
+    endif
     if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 2)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h2_current_line'))
     endif
@@ -703,6 +743,9 @@ endfunction
 
 " 見出し3を挿入
 function! amnesia#h3(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH3')
+        return
+    endif
     if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 3)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h3_current_line'))
     endif
@@ -710,7 +753,7 @@ endfunction
 
 " 箇条書きを挿入
 function! amnesia#bullet(opts) abort
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:toggle_bullet_line(v:val)')}, a:opts)
+    if !s:process_line_range({lines -> map(copy(lines), 's:toggle_bullet_line(v:val)')}, a:opts)
         call s:transform_current_line(function('s:toggle_bullet_line'))
     endif
 endfunction
@@ -759,27 +802,30 @@ endfunction
 
 " チェックボックスを挿入
 function! amnesia#checkbox(opts) abort
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_checkbox_line(v:val, 0)')}, a:opts)
+    if !s:process_line_range({lines -> map(copy(lines), 's:normalize_checkbox_line(v:val, 0)')}, a:opts)
         call s:transform_current_line(function('s:normalize_checkbox_unchecked_current_line'))
     endif
 endfunction
 
 " 完了済みチェックボックスを挿入
 function! amnesia#checkbox_done(opts) abort
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_checkbox_line(v:val, 1)')}, a:opts)
+    if !s:process_line_range({lines -> map(copy(lines), 's:normalize_checkbox_line(v:val, 1)')}, a:opts)
         call s:transform_current_line(function('s:normalize_checkbox_checked_current_line'))
     endif
 endfunction
 
 " 引用を挿入
 function! amnesia#quote(opts) abort
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:toggle_quote_line(v:val)')}, a:opts)
+    if !s:process_line_range({lines -> map(copy(lines), 's:toggle_quote_line(v:val)')}, a:opts)
         call s:transform_current_line(function('s:toggle_quote_line'))
     endif
 endfunction
 
 " 太字を挿入
 function! amnesia#bold(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDBold')
+        return
+    endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '**', '**')}, a:opts)
         call s:insert_template_and_focus('****', -2)
     endif
@@ -787,6 +833,9 @@ endfunction
 
 " 斜体を挿入
 function! amnesia#italic(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDItalic')
+        return
+    endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '*', '*')}, a:opts)
         call s:insert_template_and_focus('**', -1)
     endif
@@ -794,6 +843,9 @@ endfunction
 
 " インラインコードを挿入
 function! amnesia#inline_code(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDInlineCode')
+        return
+    endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '`', '`')}, a:opts)
         call s:insert_template_and_focus('``', -1)
     endif
@@ -801,6 +853,10 @@ endfunction
 
 " リンクを挿入
 function! amnesia#link(opts, ...) abort
+    if s:reject_explicit_line_range(a:opts, 'MDLink')
+        return
+    endif
+
     let l:raw_args = a:0 > 0 ? a:1 : ''
     let l:parsed = s:parse_command_args(l:raw_args)
     if has_key(l:parsed, 'error')
@@ -873,6 +929,10 @@ endfunction
 
 " 画像を挿入
 function! amnesia#image(opts, ...) abort
+    if s:reject_explicit_line_range(a:opts, 'MDImage')
+        return
+    endif
+
     let l:raw_args = a:0 > 0 ? a:1 : ''
     let l:parsed = s:parse_command_args(l:raw_args)
     if has_key(l:parsed, 'error')
@@ -945,6 +1005,10 @@ endfunction
 
 " 水平線を挿入（行中に挿すとMDが壊れるためカーソル行の下に1行で挿入）
 function! amnesia#hr(opts) abort
+    if get(a:opts, 'range', 0) > 0
+        echoerr 'MDHR does not support line ranges'
+        return
+    endif
     call append(line('.'), '---')
     call cursor(line('.') + 1, 1)
 endfunction
@@ -960,7 +1024,7 @@ endfunction
 
 " テーブルを挿入
 function! amnesia#table(opts) abort
-    if !s:process_visual_selection(function('s:process_table'), a:opts)
+    if !s:process_line_range(function('s:process_table'), a:opts)
         let line = line('.') - 1
         let table_lines = [
             \ '| Header1 | Header2 |',
@@ -983,6 +1047,9 @@ endfunction
 
 " 脚注を挿入
 function! amnesia#footnote(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDFootnote')
+        return
+    endif
     if !s:process_visual_selection(function('s:process_footnote'), a:opts)
         call s:insert_at_cursor('[^1]: Footnote text')
     endif
@@ -1020,4 +1087,3 @@ function! amnesia#indent_tree(opts) abort
     call s:replace_lines(start_line, end_line, l:tree_lines)
     call cursor(start_line, 1)
 endfunction
-
