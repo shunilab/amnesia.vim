@@ -2,6 +2,15 @@
 " NotionLike Markdownコマンド本体（autoload・初回コマンド実行時にロード）
 
 
+" echoerr は例外を投げてスクリプトの実行を中断してしまい、また表示も
+" スタックトレース付きの2行になる。想定内のユーザー向けエラーは
+" echohl + echomsg で中断せずに表示する（呼び出し元は必ず return する）
+function! s:error(msg) abort
+    echohl ErrorMsg
+    echomsg a:msg
+    echohl None
+endfunction
+
 function! s:is_url(text) abort
     let l:trimmed = trim(a:text)
     if empty(l:trimmed)
@@ -37,7 +46,7 @@ endfunction
 
 function! s:reject_explicit_line_range(opts, command_name) abort
     if s:has_explicit_line_range(a:opts)
-        echoerr a:command_name . ' does not support Ex line ranges'
+        call s:error(a:command_name . ' does not support Ex line ranges')
         return 1
     endif
     return 0
@@ -45,7 +54,7 @@ endfunction
 
 function! s:reject_blockwise_visual(opts, command_name) abort
     if s:is_blockwise_visual(a:opts)
-        echoerr a:command_name . ' does not support blockwise (Ctrl-V) selection'
+        call s:error(a:command_name . ' does not support blockwise (Ctrl-V) selection')
         return 1
     endif
     return 0
@@ -81,36 +90,30 @@ function! s:move_cursor_to_delim(line_num, delim, ...) abort
     endif
 endfunction
 
-function! s:move_cursor_to_link_text(line_num, ...) abort
+" link と image の "[" / "(" へのカーソル移動は同一ロジックのため共有する
+function! s:move_cursor_to_bracket_open(line_num, ...) abort
     call call(function('s:move_cursor_to_delim'), [a:line_num, '['] + a:000)
 endfunction
 
-function! s:move_cursor_to_link_url(line_num, ...) abort
+function! s:move_cursor_to_paren_open(line_num, ...) abort
     call call(function('s:move_cursor_to_delim'), [a:line_num, '('] + a:000)
 endfunction
 
-function! s:move_cursor_to_image_alt(line_num, ...) abort
-    call call(function('s:move_cursor_to_delim'), [a:line_num, '['] + a:000)
-endfunction
-
-function! s:move_cursor_to_image_url(line_num, ...) abort
-    call call(function('s:move_cursor_to_link_url'), [a:line_num] + a:000)
-endfunction
-
-function! s:build_link_insert_spec(args) abort
+" link/image共通：[primary_key](url) 形式の引数から挿入内容を組み立てる
+function! s:build_bracket_insert_spec(cmd_name, primary_key, args) abort
     if len(a:args) > 2
-        return {'error': 'MDLink accepts at most 2 arguments: [text] [url]'}
+        return {'error': a:cmd_name . ' accepts at most 2 arguments: [' . a:primary_key . '] [url]'}
     endif
 
     if len(a:args) == 2
-        return {'text': a:args[0], 'url': a:args[1]}
+        return {a:primary_key: a:args[0], 'url': a:args[1]}
     endif
 
     if len(a:args) == 1
         if s:is_url(a:args[0])
-            return {'text': '', 'url': a:args[0], 'focus': 'text'}
+            return {a:primary_key: '', 'url': a:args[0], 'focus': a:primary_key}
         endif
-        return {'text': a:args[0], 'url': '', 'focus': 'url'}
+        return {a:primary_key: a:args[0], 'url': '', 'focus': 'url'}
     endif
 
     return {}
@@ -122,25 +125,6 @@ function! s:build_code_block_spec(args) abort
     endif
 
     return {'fence': '```' . get(a:args, 0, '')}
-endfunction
-
-function! s:build_image_insert_spec(args) abort
-    if len(a:args) > 2
-        return {'error': 'MDImage accepts at most 2 arguments: [alt] [url]'}
-    endif
-
-    if len(a:args) == 2
-        return {'alt': a:args[0], 'url': a:args[1]}
-    endif
-
-    if len(a:args) == 1
-        if s:is_url(a:args[0])
-            return {'alt': '', 'url': a:args[0], 'focus': 'alt'}
-        endif
-        return {'alt': a:args[0], 'url': '', 'focus': 'url'}
-    endif
-
-    return {}
 endfunction
 
 function! s:parse_command_args(raw_args) abort
@@ -559,6 +543,14 @@ function! s:normalize_checkbox_line(line, checked) abort
         endif
         return l:match[1] . '- [' . l:mark . '] ' . l:match[3]
     endif
+
+    " 既存の箇条書き行はマーカーを取り除いてから昇格させる
+    " （そのままだと "- [ ] - foo" のように箇条書きマーカーが二重に残ってしまう）
+    let l:bullet_match = matchlist(a:line, '^\(\s*\)[-*+]\s\+\(.*\)$')
+    if len(l:bullet_match) > 0
+        return l:bullet_match[1] . '- [' . l:mark . '] ' . l:bullet_match[2]
+    endif
+
     let l:parts = matchlist(a:line, '^\(\s*\)\(.*\)$')
     return l:parts[1] . '- [' . l:mark . '] ' . l:parts[2]
 endfunction
@@ -746,13 +738,13 @@ function! amnesia#code_block(opts, ...) abort
     let l:raw_args = a:0 > 0 ? a:1 : ''
     let l:parsed = s:parse_command_args(l:raw_args)
     if has_key(l:parsed, 'error')
-        echoerr substitute(l:parsed.error, '^MDLink', 'MDCode', '')
+        call s:error(substitute(l:parsed.error, '^MDLink', 'MDCode', ''))
         return
     endif
 
     let l:code_spec = s:build_code_block_spec(get(l:parsed, 'args', []))
     if has_key(l:code_spec, 'error')
-        echoerr l:code_spec.error
+        call s:error(l:code_spec.error)
         return
     endif
 
@@ -840,7 +832,7 @@ function! amnesia#numbered(opts) abort
 
         let l:numbered_result = s:build_numbered_lines(l:lines)
         if has_key(l:numbered_result, 'error')
-            echoerr l:numbered_result.error
+            call s:error(l:numbered_result.error)
             return
         endif
         call s:replace_lines(l:start_line, l:end_line, l:numbered_result.lines)
@@ -959,68 +951,35 @@ function! amnesia#inline_code(opts) abort
     endif
 endfunction
 
-" リンクを挿入
-function! amnesia#link(opts, ...) abort
-    if s:reject_explicit_line_range(a:opts, 'MDLink') || s:reject_blockwise_visual(a:opts, 'MDLink')
-        return
-    endif
-
-    let l:raw_args = a:0 > 0 ? a:1 : ''
-    let l:parsed = s:parse_command_args(l:raw_args)
-    if has_key(l:parsed, 'error')
-        echoerr l:parsed.error
-        return
-    endif
-
-    let l:link_spec = s:build_link_insert_spec(get(l:parsed, 'args', []))
-    if has_key(l:link_spec, 'error')
-        echoerr l:link_spec.error
-        return
-    endif
-    if !empty(l:link_spec)
-        let l:start_col = col('.') - 1
-        call s:insert_at_cursor('[' . l:link_spec.text . '](' . l:link_spec.url . ')')
-        if get(l:link_spec, 'focus', '') ==# 'text'
-            call s:move_cursor_to_link_text(line('.'), l:start_col)
-        elseif get(l:link_spec, 'focus', '') ==# 'url'
-            call s:move_cursor_to_link_url(line('.'), l:start_col)
-        endif
-        return
-    endif
-
-    if s:has_visual_selection(a:opts)
-        let [start_line, end_line, lines, prefix, suffix] = s:get_visual_selection()
-        let s:link_post_action = ''
-        let l:new_lines = s:process_link(lines)
-        if len(l:new_lines) > 0
-            let l:start_col = strlen(prefix)
-            let l:new_lines[0] = prefix . l:new_lines[0]
-            let l:new_lines[-1] .= suffix
-            call s:replace_lines(start_line, end_line, l:new_lines)
-            if get(s:, 'link_post_action', '') ==# 'text'
-                call s:move_cursor_to_link_text(start_line, l:start_col)
-            elseif get(s:, 'link_post_action', '') ==# 'url'
-                call s:move_cursor_to_link_url(start_line, l:start_col)
-            else
-                call cursor(start_line, 1)
-            endif
-        endif
-        return
-    endif
-
-    if !s:process_visual_selection(function('s:process_link'), a:opts)
-        let l:start_col = col('.') - 1
-        call s:insert_at_cursor('[]()')
-        call s:move_cursor_to_link_text(line('.'), l:start_col)
-    endif
+" link と image は "[primary](url)" 形式の挿入・選択変換・トグルという
+" 同一の骨格を持つため、種別ごとの差分（プレフィックス・キー名・正規表現・
+" トグル時にどちらのグループを残すか）だけを spec として渡して共有する
+function! s:link_kind() abort
+    return {
+        \ 'cmd': 'MDLink',
+        \ 'prefix': '',
+        \ 'primary_key': 'text',
+        \ 'parse_basic': function('s:parse_basic_link'),
+        \ 'toggle_group': 1,
+        \ }
 endfunction
 
-function! s:process_link(lines) abort
+function! s:image_kind() abort
+    return {
+        \ 'cmd': 'MDImage',
+        \ 'prefix': '!',
+        \ 'primary_key': 'alt',
+        \ 'parse_basic': function('s:parse_basic_image'),
+        \ 'toggle_group': 2,
+        \ }
+endfunction
+
+function! s:process_bracket_lines(kind, lines) abort
     if len(a:lines) == 1
-        let l:match = s:parse_basic_link(a:lines[0])
+        let l:match = a:kind.parse_basic(a:lines[0])
         if len(l:match) > 0
-            let s:link_post_action = 'toggle'
-            return [l:match[1]]
+            let s:bracket_post_action = 'toggle'
+            return [l:match[a:kind.toggle_group]]
         endif
     endif
     let l:selected = s:get_selection_text(a:lines)
@@ -1028,93 +987,79 @@ function! s:process_link(lines) abort
         return a:lines
     endif
     if s:is_url(l:selected)
-        let s:link_post_action = 'text'
-        return ['[](' . l:selected . ')']
+        let s:bracket_post_action = a:kind.primary_key
+        return [a:kind.prefix . '[](' . l:selected . ')']
     endif
-    let s:link_post_action = 'url'
-    return ['[' . l:selected . ']()']
+    let s:bracket_post_action = 'url'
+    return [a:kind.prefix . '[' . l:selected . ']()']
+endfunction
+
+function! s:insert_bracket(opts, raw_args, kind) abort
+    if s:reject_explicit_line_range(a:opts, a:kind.cmd) || s:reject_blockwise_visual(a:opts, a:kind.cmd)
+        return
+    endif
+
+    let l:parsed = s:parse_command_args(a:raw_args)
+    if has_key(l:parsed, 'error')
+        call s:error(substitute(l:parsed.error, '^MDLink', a:kind.cmd, ''))
+        return
+    endif
+
+    let l:spec = s:build_bracket_insert_spec(a:kind.cmd, a:kind.primary_key, get(l:parsed, 'args', []))
+    if has_key(l:spec, 'error')
+        call s:error(l:spec.error)
+        return
+    endif
+    if !empty(l:spec)
+        let l:start_col = col('.') - 1
+        call s:insert_at_cursor(a:kind.prefix . '[' . get(l:spec, a:kind.primary_key, '') . '](' . get(l:spec, 'url', '') . ')')
+        if get(l:spec, 'focus', '') ==# a:kind.primary_key
+            call s:move_cursor_to_bracket_open(line('.'), l:start_col)
+        elseif get(l:spec, 'focus', '') ==# 'url'
+            call s:move_cursor_to_paren_open(line('.'), l:start_col)
+        endif
+        return
+    endif
+
+    if s:has_visual_selection(a:opts)
+        let [start_line, end_line, lines, prefix, suffix] = s:get_visual_selection()
+        let s:bracket_post_action = ''
+        let l:new_lines = s:process_bracket_lines(a:kind, lines)
+        if len(l:new_lines) > 0
+            let l:start_col = strlen(prefix)
+            let l:new_lines[0] = prefix . l:new_lines[0]
+            let l:new_lines[-1] .= suffix
+            call s:replace_lines(start_line, end_line, l:new_lines)
+            if get(s:, 'bracket_post_action', '') ==# a:kind.primary_key
+                call s:move_cursor_to_bracket_open(start_line, l:start_col)
+            elseif get(s:, 'bracket_post_action', '') ==# 'url'
+                call s:move_cursor_to_paren_open(start_line, l:start_col)
+            else
+                call cursor(start_line, 1)
+            endif
+        endif
+        return
+    endif
+
+    let l:start_col = col('.') - 1
+    call s:insert_at_cursor(a:kind.prefix . '[]()')
+    call s:move_cursor_to_bracket_open(line('.'), l:start_col)
+endfunction
+
+" リンクを挿入
+function! amnesia#link(opts, ...) abort
+    call s:insert_bracket(a:opts, a:0 > 0 ? a:1 : '', s:link_kind())
 endfunction
 
 " 画像を挿入
 function! amnesia#image(opts, ...) abort
-    if s:reject_explicit_line_range(a:opts, 'MDImage') || s:reject_blockwise_visual(a:opts, 'MDImage')
-        return
-    endif
-
-    let l:raw_args = a:0 > 0 ? a:1 : ''
-    let l:parsed = s:parse_command_args(l:raw_args)
-    if has_key(l:parsed, 'error')
-        echoerr substitute(l:parsed.error, '^MDLink', 'MDImage', '')
-        return
-    endif
-
-    let l:image_spec = s:build_image_insert_spec(get(l:parsed, 'args', []))
-    if has_key(l:image_spec, 'error')
-        echoerr l:image_spec.error
-        return
-    endif
-    if !empty(l:image_spec)
-        let l:start_col = col('.') - 1
-        call s:insert_at_cursor('![' . l:image_spec.alt . '](' . l:image_spec.url . ')')
-        if get(l:image_spec, 'focus', '') ==# 'alt'
-            call s:move_cursor_to_image_alt(line('.'), l:start_col)
-        elseif get(l:image_spec, 'focus', '') ==# 'url'
-            call s:move_cursor_to_image_url(line('.'), l:start_col)
-        endif
-        return
-    endif
-
-    if s:has_visual_selection(a:opts)
-        let [start_line, end_line, lines, prefix, suffix] = s:get_visual_selection()
-        let s:image_post_action = ''
-        let l:new_lines = s:process_image(lines)
-        if len(l:new_lines) > 0
-            let l:start_col = strlen(prefix)
-            let l:new_lines[0] = prefix . l:new_lines[0]
-            let l:new_lines[-1] .= suffix
-            call s:replace_lines(start_line, end_line, l:new_lines)
-            if get(s:, 'image_post_action', '') ==# 'alt'
-                call s:move_cursor_to_image_alt(start_line, l:start_col)
-            elseif get(s:, 'image_post_action', '') ==# 'url'
-                call s:move_cursor_to_image_url(start_line, l:start_col)
-            else
-                call cursor(start_line, 1)
-            endif
-        endif
-        return
-    endif
-
-    if !s:process_visual_selection(function('s:process_image'), a:opts)
-        let l:start_col = col('.') - 1
-        call s:insert_at_cursor('![]()')
-        call s:move_cursor_to_image_alt(line('.'), l:start_col)
-    endif
-endfunction
-
-function! s:process_image(lines) abort
-    if len(a:lines) == 1
-        let l:match = s:parse_basic_image(a:lines[0])
-        if len(l:match) > 0
-            let s:image_post_action = 'toggle'
-            return [l:match[2]]
-        endif
-    endif
-    let l:selected = s:get_selection_text(a:lines)
-    if empty(l:selected)
-        return a:lines
-    endif
-    if s:is_url(l:selected)
-        let s:image_post_action = 'alt'
-        return ['![](' . l:selected . ')']
-    endif
-    let s:image_post_action = 'url'
-    return ['![' . l:selected . ']()']
+    call s:insert_bracket(a:opts, a:0 > 0 ? a:1 : '', s:image_kind())
 endfunction
 
 " 水平線を挿入（行中に挿すとMDが壊れるためカーソル行の下に1行で挿入）
 function! amnesia#hr(opts) abort
     if get(a:opts, 'range', 0) > 0
-        echoerr 'MDHR does not support line ranges'
+        call s:error('MDHR does not support line ranges')
         return
     endif
     call append(line('.'), '---')
@@ -1153,23 +1098,50 @@ function! s:process_table(lines) abort
     return s:build_table_lines(l:rows)
 endfunction
 
+" バッファ内の既存脚注（[^数字]）から最大番号を探す。手書きの名前付き
+" 脚注（[^note] 等）は数字ではないため無視される
+function! s:find_max_footnote_number() abort
+    let l:max = 0
+    for l:line in getline(1, '$')
+        let l:start = 0
+        while 1
+            let l:pos = match(l:line, '\[\^\d\+\]', l:start)
+            if l:pos < 0
+                break
+            endif
+            let l:max = max([l:max, str2nr(matchstr(l:line, '\d\+', l:pos))])
+            let l:start = l:pos + 1
+        endwhile
+    endfor
+    return l:max
+endfunction
+
+function! s:focus_end_of_line_insert(line_num) abort
+    call cursor(a:line_num, len(getline(a:line_num)) + 1)
+    startinsert!
+endfunction
+
 " 脚注を挿入
 function! amnesia#footnote(opts) abort
     if s:reject_explicit_line_range(a:opts, 'MDFootnote') || s:reject_blockwise_visual(a:opts, 'MDFootnote')
         return
     endif
-    if !s:process_visual_selection(function('s:process_footnote'), a:opts)
-        call s:insert_at_cursor('[^1]: Footnote text')
+
+    let l:num = s:find_max_footnote_number() + 1
+    if !s:process_visual_selection({lines -> s:process_footnote(lines, l:num)}, a:opts)
+        call s:insert_at_cursor('[^' . l:num . ']')
+        let l:last_line = line('$')
+        call append(l:last_line, ['', '[^' . l:num . ']: '])
+        call s:focus_end_of_line_insert(l:last_line + 2)
     endif
 endfunction
 
-function! s:process_footnote(lines) abort
-    let l:text = join(a:lines, ' ')
-    let ref = substitute(a:lines[0], '\s\+', '_', 'g')
-    " 脚注テキストを文書末尾に追加
-    let last_line = line('$')
-    call append(last_line, ['', '[^' . ref . ']: ' . l:text])
-    return ['[^' . ref . ']']
+function! s:process_footnote(lines, num) abort
+    let l:text = s:get_selection_text(a:lines)
+    " 脚注定義を文書末尾に追加
+    let l:last_line = line('$')
+    call append(l:last_line, ['', '[^' . a:num . ']: ' . l:text])
+    return ['[^' . a:num . ']']
 endfunction
 
 function! amnesia#filetype() abort
@@ -1178,7 +1150,7 @@ endfunction
 
 function! amnesia#indent_tree(opts) abort
     if get(a:opts, 'range', 0) == 0
-        echoerr 'IndentTree requires a selected line range'
+        call s:error('IndentTree requires a selected line range')
         return
     endif
 
@@ -1187,7 +1159,7 @@ function! amnesia#indent_tree(opts) abort
     let lines = getline(start_line, end_line)
     let l:tree_result = s:build_tree_lines(lines)
     if has_key(l:tree_result, 'error')
-        echoerr l:tree_result.error
+        call s:error(l:tree_result.error)
         return
     endif
 
