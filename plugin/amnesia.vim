@@ -39,6 +39,6 @@ for s:pair in [
     \ ['indent-tree', 'IndentTree'],
     \ ]
     execute printf('nnoremap <silent> <Plug>(amnesia-%s) :%s<CR>', s:pair[0], s:pair[1])
-    execute printf('xnoremap <silent> <Plug>(amnesia-%s) :%s<CR>', s:pair[0], s:pair[1])
+    execute printf('xnoremap <silent> <Plug>(amnesia-%s) <Cmd>call amnesia#visual_dispatch(%s)<CR>', s:pair[0], string(s:pair[1]))
 endfor
 unlet s:pair

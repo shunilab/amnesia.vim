@@ -17,17 +17,18 @@ function! s:has_visual_selection(opts) abort
         return 0
     endif
 
-    let [line_start, column_start] = getpos("'<")[1:2]
-    let [line_end, column_end] = getpos("'>")[1:2]
+    let line_start = getpos("'<")[1]
+    let line_end = getpos("'>")[1]
     if line_start == 0 || line_end == 0
         return 0
     endif
 
-    if get(a:opts, 'line1', 0) != line_start || get(a:opts, 'line2', 0) != line_end
-        return 0
-    endif
-
-    return line_start != line_end || column_start != column_end
+    " 1文字だけの選択（start==end）も正当なビジュアル選択として扱う。
+    " <Plug>マッピング経由（amnesia#visual_dispatch）は毎回マークを
+    " 選択直後に設定し直すため常に安全。直接 :5,5Command のように明示的
+    " Ex 範囲を打った場合、過去の名残りマークがたまたま同じ行に一致すると
+    " 誤って選択扱いされ得るが、既知の制限としてdocに明記する。
+    return get(a:opts, 'line1', 0) == line_start && get(a:opts, 'line2', 0) == line_end
 endfunction
 
 function! s:has_explicit_line_range(opts) abort
@@ -40,6 +41,30 @@ function! s:reject_explicit_line_range(opts, command_name) abort
         return 1
     endif
     return 0
+endfunction
+
+function! s:reject_blockwise_visual(opts, command_name) abort
+    if s:is_blockwise_visual(a:opts)
+        echoerr a:command_name . ' does not support blockwise (Ctrl-V) selection'
+        return 1
+    endif
+    return 0
+endfunction
+
+" <Plug>マッピング（ビジュアルモード）からの呼び出し専用のディスパッチャ。
+" mode()/getpos('v')/getpos('.') で選択範囲を確定させてから明示的に
+" '</'>マークをその場で設定するため、過去の名残りマーク（stale marks）に
+" 依存する曖昧さが生じない。
+function! amnesia#visual_dispatch(cmdname) abort
+    let l:start = getpos('v')
+    let l:end = getpos('.')
+    if l:start[1] > l:end[1] || (l:start[1] == l:end[1] && l:start[2] > l:end[2])
+        let [l:start, l:end] = [l:end, l:start]
+    endif
+    execute "normal! \<Esc>"
+    call setpos("'<", l:start)
+    call setpos("'>", l:end)
+    execute "'<,'>" . a:cmdname
 endfunction
 
 function! s:move_cursor_and_startinsert(line_num, col) abort
@@ -202,6 +227,18 @@ function! s:get_visual_selection() abort
     return [line_start, line_end, lines, prefix, suffix]
 endfunction
 
+" 行単位で意味を持つコマンド用：選択の種別（charwise/linewise/blockwise）に
+" 関わらず、選択範囲の行全体をそのまま返す（列方向の分割は一切行わない）
+function! s:get_visual_selection_lines() abort
+    let line_start = getpos("'<")[1]
+    let line_end = getpos("'>")[1]
+    return [line_start, line_end, getline(line_start, line_end)]
+endfunction
+
+function! s:is_blockwise_visual(opts) abort
+    return s:has_visual_selection(a:opts) && visualmode() ==# "\<C-v>"
+endfunction
+
 " カーソル位置にテキストを挿入するヘルパー関数
 function! s:insert_at_cursor(text) abort
     let pos = getpos('.')
@@ -257,9 +294,26 @@ function! s:process_visual_selection(process_fn, opts, ...) abort
     return 0
 endfunction
 
+" 行単位コマンド用：選択種別に関わらず行全体へ process_fn を適用する
+function! s:process_visual_selection_lines(process_fn, opts, ...) abort
+    let l:PostProcess = a:0 > 0 ? a:1 : v:null
+    if s:has_visual_selection(a:opts)
+        let [start_line, end_line, lines] = s:get_visual_selection_lines()
+        if len(lines) > 0
+            let new_lines = a:process_fn(lines)
+            call s:replace_lines(start_line, end_line, new_lines)
+            if type(l:PostProcess) == type(function('tr'))
+                call l:PostProcess(start_line)
+            endif
+            return 1
+        endif
+    endif
+    return 0
+endfunction
+
 function! s:process_line_range(process_fn, opts, ...) abort
     let l:PostProcess = a:0 > 0 ? a:1 : v:null
-    if s:process_visual_selection(a:process_fn, a:opts, l:PostProcess)
+    if s:process_visual_selection_lines(a:process_fn, a:opts, l:PostProcess)
         return 1
     endif
 
@@ -731,7 +785,7 @@ function! amnesia#h1(opts) abort
     if s:reject_explicit_line_range(a:opts, 'MDH1')
         return
     endif
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 1)')}, a:opts)
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 1)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h1_current_line'))
     endif
 endfunction
@@ -741,7 +795,7 @@ function! amnesia#h2(opts) abort
     if s:reject_explicit_line_range(a:opts, 'MDH2')
         return
     endif
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 2)')}, a:opts)
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 2)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h2_current_line'))
     endif
 endfunction
@@ -751,7 +805,7 @@ function! amnesia#h3(opts) abort
     if s:reject_explicit_line_range(a:opts, 'MDH3')
         return
     endif
-    if !s:process_visual_selection({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 3)')}, a:opts)
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 3)')}, a:opts)
         call s:transform_current_line(function('s:normalize_h3_current_line'))
     endif
 endfunction
@@ -828,7 +882,7 @@ endfunction
 
 " 太字を挿入
 function! amnesia#bold(opts) abort
-    if s:reject_explicit_line_range(a:opts, 'MDBold')
+    if s:reject_explicit_line_range(a:opts, 'MDBold') || s:reject_blockwise_visual(a:opts, 'MDBold')
         return
     endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '**', '**')}, a:opts)
@@ -838,7 +892,7 @@ endfunction
 
 " 斜体を挿入
 function! amnesia#italic(opts) abort
-    if s:reject_explicit_line_range(a:opts, 'MDItalic')
+    if s:reject_explicit_line_range(a:opts, 'MDItalic') || s:reject_blockwise_visual(a:opts, 'MDItalic')
         return
     endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '*', '*')}, a:opts)
@@ -848,7 +902,7 @@ endfunction
 
 " インラインコードを挿入
 function! amnesia#inline_code(opts) abort
-    if s:reject_explicit_line_range(a:opts, 'MDInlineCode')
+    if s:reject_explicit_line_range(a:opts, 'MDInlineCode') || s:reject_blockwise_visual(a:opts, 'MDInlineCode')
         return
     endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '`', '`')}, a:opts)
@@ -858,7 +912,7 @@ endfunction
 
 " リンクを挿入
 function! amnesia#link(opts, ...) abort
-    if s:reject_explicit_line_range(a:opts, 'MDLink')
+    if s:reject_explicit_line_range(a:opts, 'MDLink') || s:reject_blockwise_visual(a:opts, 'MDLink')
         return
     endif
 
@@ -934,7 +988,7 @@ endfunction
 
 " 画像を挿入
 function! amnesia#image(opts, ...) abort
-    if s:reject_explicit_line_range(a:opts, 'MDImage')
+    if s:reject_explicit_line_range(a:opts, 'MDImage') || s:reject_blockwise_visual(a:opts, 'MDImage')
         return
     endif
 
@@ -1052,7 +1106,7 @@ endfunction
 
 " 脚注を挿入
 function! amnesia#footnote(opts) abort
-    if s:reject_explicit_line_range(a:opts, 'MDFootnote')
+    if s:reject_explicit_line_range(a:opts, 'MDFootnote') || s:reject_blockwise_visual(a:opts, 'MDFootnote')
         return
     endif
     if !s:process_visual_selection(function('s:process_footnote'), a:opts)
