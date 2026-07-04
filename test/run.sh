@@ -16,10 +16,14 @@ for runner in vim nvim; do
 
     for test_file in test/test_*.vim; do
         errfile="$(mktemp)"
+        # source 中に assert 以外の例外（未定義関数・構文エラー等）が起きると
+        # スクリプトがその場で中断し、以降の assert が黙って未実行になる。
+        # try/catch で全体を包み、捕捉した例外を v:errors に積んで
+        # 「途中で落ちて何もチェックされなかった」を偽PASSにしない。
         "$runner" -N -u NONE -i NONE -es \
             -c "set rtp+=${REPO_ROOT}" \
             -c "runtime plugin/amnesia.vim" \
-            -c "source ${test_file}" \
+            -c "try | source ${test_file} | catch | call add(v:errors, 'UNCAUGHT: ' . v:exception) | endtry" \
             -c "call writefile(v:errors, '${errfile}')" \
             -c "qall!" >/tmp/amnesia_test_stdout.log 2>&1
 
