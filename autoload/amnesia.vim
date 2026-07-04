@@ -222,11 +222,16 @@ function! s:replace_lines(start_line, end_line, new_lines) abort
         return
     endif
 
-    call setline(a:start_line, a:new_lines)
+    " setline()にリストを渡すと start_line 以降を new_lines の行数分
+    " 上書きしてしまうため、元範囲と重なる分だけ setline() し、
+    " 超過分は append()、不足分は delete で調整する（範囲外の行を破壊しない）
+    let l:overlap = a:end_line - a:start_line + 1
+    call setline(a:start_line, a:new_lines[: l:overlap - 1])
 
-    let l:new_end = a:start_line + len(a:new_lines) - 1
-    if l:new_end < a:end_line
-        execute (l:new_end + 1) . ',' . a:end_line . 'delete _'
+    if len(a:new_lines) > l:overlap
+        call append(a:end_line, a:new_lines[l:overlap :])
+    elseif len(a:new_lines) < l:overlap
+        execute (a:start_line + len(a:new_lines)) . ',' . a:end_line . 'delete _'
     endif
 endfunction
 
