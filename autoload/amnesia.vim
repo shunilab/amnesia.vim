@@ -381,7 +381,7 @@ function! s:normalize_heading_line(line, level) abort
     if a:line =~ '^\s*$'
         return a:line
     endif
-    let l:match = matchlist(a:line, '^\(\s*\)\(#\+\)\s\+\(.*\)$')
+    let l:match = matchlist(a:line, '^\(\s*\)\(#\+\)\s*\(.*\)$')
     if len(l:match) > 0
         if len(l:match[2]) == a:level
             return l:match[1] . l:match[3]
@@ -608,6 +608,15 @@ function! s:split_table_row(line) abort
     return s:split_csv_line(a:line)
 endfunction
 
+" セル内の "|" はテーブル区切りと衝突するためエスケープする
+function! s:escape_table_cell(cell) abort
+    return substitute(a:cell, '|', '\\|', 'g')
+endfunction
+
+function! s:build_table_row(cells) abort
+    return '| ' . join(map(copy(a:cells), 's:escape_table_cell(v:val)'), ' | ') . ' |'
+endfunction
+
 function! s:build_table_lines(rows) abort
     let l:max_cols = 0
     for l:row in a:rows
@@ -623,11 +632,11 @@ function! s:build_table_lines(rows) abort
     endfor
     let l:separator = repeat(['---'], l:max_cols)
     let l:table_lines = [
-        \ '| ' . join(a:rows[0], ' | ') . ' |',
-        \ '| ' . join(l:separator, ' | ') . ' |'
+        \ s:build_table_row(a:rows[0]),
+        \ s:build_table_row(l:separator)
         \ ]
     for l:i in range(1, len(a:rows) - 1)
-        call add(l:table_lines, '| ' . join(a:rows[l:i], ' | ') . ' |')
+        call add(l:table_lines, s:build_table_row(a:rows[l:i]))
     endfor
     return l:table_lines
 endfunction
@@ -1072,7 +1081,7 @@ function! amnesia#complete_lang(arglead, cmdline, cursorpos) abort
         \ 'go', 'html', 'java', 'javascript', 'json', 'kotlin', 'lua', 'makefile',
         \ 'markdown', 'mermaid', 'php', 'powershell', 'python', 'ruby', 'rust',
         \ 'scss', 'sh', 'sql', 'swift', 'toml', 'typescript', 'vim', 'xml', 'yaml', 'zsh']
-    return filter(l:langs, 'v:val =~# "^" . a:arglead')
+    return filter(l:langs, {_, val -> stridx(val, a:arglead) == 0})
 endfunction
 
 " テーブルを挿入
@@ -1142,10 +1151,6 @@ function! s:process_footnote(lines, num) abort
     let l:last_line = line('$')
     call append(l:last_line, ['', '[^' . a:num . ']: ' . l:text])
     return ['[^' . a:num . ']']
-endfunction
-
-function! amnesia#filetype() abort
-    setlocal filetype=markdown
 endfunction
 
 function! amnesia#indent_tree(opts) abort
