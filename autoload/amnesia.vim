@@ -468,6 +468,13 @@ function! s:to_roman(index) abort
 endfunction
 
 function! s:format_number_marker(depth, index) abort
+    " g:amnesia_number_style: 'numeric'（既定・全深さ数字、GFM準拠）
+    " または 'fancy'（1. -> a. -> i. とネストで切替。CommonMark/GFMでは
+    " リストとして解釈されない点に注意）
+    if get(g:, 'amnesia_number_style', 'numeric') !=# 'fancy'
+        return string(a:index)
+    endif
+
     let l:mode = a:depth % 3
     if l:mode == 0
         return string(a:index)
@@ -487,7 +494,7 @@ function! s:build_numbered_lines(lines) abort
         if l:line =~ '^\s*$'
             call add(l:entries, {'blank': 1, 'text': l:line})
         else
-            let l:indent_info = s:count_indent_width(l:line)
+            let l:indent_info = s:count_indent_width(l:line, 'MDNumber')
             if has_key(l:indent_info, 'error')
                 return {'error': l:indent_info.error}
             endif
@@ -633,10 +640,10 @@ function! s:build_table_lines(rows) abort
     return l:table_lines
 endfunction
 
-function! s:count_indent_width(line) abort
+function! s:count_indent_width(line, command_name) abort
     let l:indent = matchstr(a:line, '^\s*')
     if stridx(l:indent, "\t") >= 0
-        return {'error': 'IndentTree does not support tabs in indentation'}
+        return {'error': a:command_name . ' does not support tabs in indentation'}
     endif
     return {'width': strlen(l:indent)}
 endfunction
@@ -658,7 +665,7 @@ function! s:build_tree_lines(lines) abort
 
     for l:line in a:lines
         if l:line !~ '^\s*$'
-            let l:indent_info = s:count_indent_width(l:line)
+            let l:indent_info = s:count_indent_width(l:line, 'IndentTree')
             if has_key(l:indent_info, 'error')
                 return {'error': l:indent_info.error}
             endif
@@ -822,7 +829,16 @@ function! amnesia#numbered(opts) abort
     if get(a:opts, 'range', 0) > 0
         let l:start_line = a:opts.line1
         let l:end_line = a:opts.line2
-        let l:numbered_result = s:build_numbered_lines(getline(l:start_line, l:end_line))
+        let l:lines = getline(l:start_line, l:end_line)
+
+        " 選択範囲の非空行がすべて既に番号付きなら、トグル解除として番号を外す
+        if s:all_non_blank_numbered(l:lines)
+            call s:replace_lines(l:start_line, l:end_line, s:strip_numbered_lines(l:lines))
+            call cursor(l:start_line, 1)
+            return
+        endif
+
+        let l:numbered_result = s:build_numbered_lines(l:lines)
         if has_key(l:numbered_result, 'error')
             echoerr l:numbered_result.error
             return
@@ -830,12 +846,45 @@ function! amnesia#numbered(opts) abort
         call s:replace_lines(l:start_line, l:end_line, l:numbered_result.lines)
         call cursor(l:start_line, 1)
     else
-        call s:transform_current_line(function('s:normalize_current_numbered_line'))
+        call s:transform_current_line(function('s:toggle_current_numbered_line'))
     endif
 endfunction
 
-function! s:normalize_current_numbered_line(line) abort
+function! s:line_is_numbered(line) abort
+    return a:line =~# '^\s*[[:alnum:]]\+\.\s\+\S'
+endfunction
+
+function! s:all_non_blank_numbered(lines) abort
+    let l:has_non_blank = 0
+    for l:line in a:lines
+        if l:line !~ '^\s*$'
+            let l:has_non_blank = 1
+            if !s:line_is_numbered(l:line)
+                return 0
+            endif
+        endif
+    endfor
+    return l:has_non_blank
+endfunction
+
+function! s:strip_numbered_lines(lines) abort
+    let l:result = []
+    for l:line in a:lines
+        if l:line =~ '^\s*$'
+            call add(l:result, l:line)
+        else
+            let [l:indent, l:body] = s:strip_number_prefix(l:line)
+            call add(l:result, l:indent . l:body)
+        endif
+    endfor
+    return l:result
+endfunction
+
+function! s:toggle_current_numbered_line(line) abort
     let [l:indent, l:body] = s:strip_number_prefix(a:line)
+    if s:line_is_numbered(a:line)
+        return l:indent . l:body
+    endif
     return l:indent . '1. ' . l:body
 endfunction
 
