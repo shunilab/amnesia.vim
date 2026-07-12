@@ -362,7 +362,9 @@ function! s:parse_basic_image(text) abort
 endfunction
 
 function! s:toggle_wrapped_text(text, prefix, suffix) abort
-    let l:pattern = '^' . escape(a:prefix, '\*`[]') . '\(.*\)' . escape(a:suffix, '\*`[]') . '$'
+    " '~' は magic 正規表現で「直前の :s 置換文字列」を指すメタ文字のため、
+    " 打ち消し線(~~)のトグル解除を正しく動かすにはエスケープ対象に含める必要がある
+    let l:pattern = '^' . escape(a:prefix, '\*`[]~') . '\(.*\)' . escape(a:suffix, '\*`[]~') . '$'
     let l:match = matchlist(a:text, l:pattern)
     return len(l:match) > 0 ? l:match[1] : ''
 endfunction
@@ -818,6 +820,36 @@ function! amnesia#h3(opts) abort
     endif
 endfunction
 
+" 見出し4を挿入
+function! amnesia#h4(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH4')
+        return
+    endif
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 4)')}, a:opts)
+        call s:transform_current_line(function('s:normalize_h4_current_line'))
+    endif
+endfunction
+
+" 見出し5を挿入
+function! amnesia#h5(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH5')
+        return
+    endif
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 5)')}, a:opts)
+        call s:transform_current_line(function('s:normalize_h5_current_line'))
+    endif
+endfunction
+
+" 見出し6を挿入
+function! amnesia#h6(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDH6')
+        return
+    endif
+    if !s:process_visual_selection_lines({lines -> map(copy(lines), 's:normalize_heading_line(v:val, 6)')}, a:opts)
+        call s:transform_current_line(function('s:normalize_h6_current_line'))
+    endif
+endfunction
+
 " 箇条書きを挿入
 function! amnesia#bullet(opts) abort
     if !s:process_line_range({lines -> map(copy(lines), 's:toggle_bullet_line(v:val)')}, a:opts)
@@ -901,6 +933,18 @@ function! s:normalize_h3_current_line(line) abort
     return s:normalize_heading_line(a:line, 3)
 endfunction
 
+function! s:normalize_h4_current_line(line) abort
+    return s:normalize_heading_line(a:line, 4)
+endfunction
+
+function! s:normalize_h5_current_line(line) abort
+    return s:normalize_heading_line(a:line, 5)
+endfunction
+
+function! s:normalize_h6_current_line(line) abort
+    return s:normalize_heading_line(a:line, 6)
+endfunction
+
 function! s:normalize_checkbox_unchecked_current_line(line) abort
     return s:normalize_checkbox_line(a:line, 0)
 endfunction
@@ -957,6 +1001,26 @@ function! amnesia#inline_code(opts) abort
     endif
     if !s:process_visual_selection({lines -> s:process_wrapping(lines, '`', '`')}, a:opts)
         call s:insert_template_and_focus('``', -1)
+    endif
+endfunction
+
+" 打ち消し線を挿入
+function! amnesia#strike(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDStrike') || s:reject_blockwise_visual(a:opts, 'MDStrike')
+        return
+    endif
+    if !s:process_visual_selection({lines -> s:process_wrapping(lines, '~~', '~~')}, a:opts)
+        call s:insert_template_and_focus('~~~~', -2)
+    endif
+endfunction
+
+" ハイライトを挿入
+function! amnesia#highlight(opts) abort
+    if s:reject_explicit_line_range(a:opts, 'MDHighlight') || s:reject_blockwise_visual(a:opts, 'MDHighlight')
+        return
+    endif
+    if !s:process_visual_selection({lines -> s:process_wrapping(lines, '==', '==')}, a:opts)
+        call s:insert_template_and_focus('====', -2)
     endif
 endfunction
 

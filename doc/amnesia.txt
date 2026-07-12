@@ -41,15 +41,15 @@ Ex 範囲指定に対応するコマンドは次の通り: >
 見出し・箇条書き・チェックボックス・引用・コードブロック・テーブル・
 IndentTree など行単位で意味を持つコマンドは、ビジュアル選択が行の一部
 （文字単位）であっても選択範囲の行全体に適用される。`MDBold` /
-`MDItalic` / `MDInlineCode` / `MDLink` / `MDImage` / `MDFootnote` は
-文字単位のラップ・置換を行うため、ブロック選択（Ctrl-V）には対応せず
-エラーになる。
+`MDItalic` / `MDInlineCode` / `MDStrike` / `MDHighlight` / `MDLink` /
+`MDImage` / `MDFootnote` は文字単位のラップ・置換を行うため、
+ブロック選択（Ctrl-V）には対応せずエラーになる。
 
 ==============================================================================
 2. コマンド					*amnesia-commands*
 
-						*:MDH1* *:MDH2* *:MDH3*
-:MDH1 / :MDH2 / :MDH3	見出しレベルを設定。同レベルの再実行でトグル解除。
+					*:MDH1* *:MDH2* *:MDH3* *:MDH4* *:MDH5* *:MDH6*
+:MDH1 〜 :MDH6		見出しレベルを設定。同レベルの再実行でトグル解除。
 			別レベルの見出しには変換として働く。
 			明示的な Ex 範囲指定は非対応。
 
@@ -88,10 +88,12 @@ g:amnesia_number_style	MDNumberのネスト記法を切り替える。既定値
 :MDQuote		引用 `> ` をトグル。
 			Ex 範囲指定に対応。
 
-						*:MDBold* *:MDItalic* *:MDInlineCode*
+			*:MDBold* *:MDItalic* *:MDInlineCode* *:MDStrike* *:MDHighlight*
 :MDBold			`**` でラップ。単一行選択の再実行でトグル解除。
 :MDItalic		`*` でラップ。同上。
 :MDInlineCode		`` ` `` でラップ。同上。
+:MDStrike		`~~` でラップ（打ち消し線）。同上。
+:MDHighlight		`==` でラップ（ハイライト）。同上。
 			選択なしなら空のペアを挿入して挿入モードへ。
 			明示的な Ex 範囲指定は非対応。
 
@@ -145,14 +147,16 @@ g:amnesia_number_style	MDNumberのネスト記法を切り替える。既定値
 対応する: >
 
 	<Plug>(amnesia-h1)          <Plug>(amnesia-h2)
-	<Plug>(amnesia-h3)          <Plug>(amnesia-bullet)
-	<Plug>(amnesia-number)      <Plug>(amnesia-check)
-	<Plug>(amnesia-check-done)  <Plug>(amnesia-quote)
-	<Plug>(amnesia-bold)        <Plug>(amnesia-italic)
-	<Plug>(amnesia-inline-code) <Plug>(amnesia-code)
-	<Plug>(amnesia-link)        <Plug>(amnesia-image)
-	<Plug>(amnesia-table)       <Plug>(amnesia-footnote)
-	<Plug>(amnesia-indent-tree)
+	<Plug>(amnesia-h3)          <Plug>(amnesia-h4)
+	<Plug>(amnesia-h5)          <Plug>(amnesia-h6)
+	<Plug>(amnesia-bullet)      <Plug>(amnesia-number)
+	<Plug>(amnesia-check)       <Plug>(amnesia-check-done)
+	<Plug>(amnesia-quote)       <Plug>(amnesia-bold)
+	<Plug>(amnesia-italic)      <Plug>(amnesia-inline-code)
+	<Plug>(amnesia-code)        <Plug>(amnesia-strike)
+	<Plug>(amnesia-highlight)   <Plug>(amnesia-link)
+	<Plug>(amnesia-image)       <Plug>(amnesia-table)
+	<Plug>(amnesia-footnote)    <Plug>(amnesia-indent-tree)
 
 ノーマルモードのみ: >
 

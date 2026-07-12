@@ -10,6 +10,9 @@ command! -range -nargs=* -bar -complete=customlist,amnesia#complete_lang MDCode 
 command! -range -bar MDH1 call amnesia#h1({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDH2 call amnesia#h2({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDH3 call amnesia#h3({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDH4 call amnesia#h4({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDH5 call amnesia#h5({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDH6 call amnesia#h6({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDBullet call amnesia#bullet({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDNumber call amnesia#numbered({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDCheck call amnesia#checkbox({'line1': <line1>, 'line2': <line2>, 'range': <range>})
@@ -20,6 +23,8 @@ command! -range -nargs=* MDLink call amnesia#link({'line1': <line1>, 'line2': <l
 command! -range -nargs=* MDImage call amnesia#image({'line1': <line1>, 'line2': <line2>, 'range': <range>}, <q-args>)
 command! -range -bar MDHR call amnesia#hr({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDInlineCode call amnesia#inline_code({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDStrike call amnesia#strike({'line1': <line1>, 'line2': <line2>, 'range': <range>})
+command! -range -bar MDHighlight call amnesia#highlight({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDTable call amnesia#table({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDCheckDone call amnesia#checkbox_done({'line1': <line1>, 'line2': <line2>, 'range': <range>})
 command! -range -bar MDFootnote call amnesia#footnote({'line1': <line1>, 'line2': <line2>, 'range': <range>})
@@ -30,10 +35,12 @@ command! -range -bar IndentTree call amnesia#indent_tree({'line1': <line1>, 'lin
 " ノーマル/ビジュアル両モードに対応するコマンド群
 for s:pair in [
     \ ['h1', 'MDH1'], ['h2', 'MDH2'], ['h3', 'MDH3'],
+    \ ['h4', 'MDH4'], ['h5', 'MDH5'], ['h6', 'MDH6'],
     \ ['bullet', 'MDBullet'], ['number', 'MDNumber'],
     \ ['check', 'MDCheck'], ['check-done', 'MDCheckDone'],
     \ ['quote', 'MDQuote'], ['bold', 'MDBold'], ['italic', 'MDItalic'],
     \ ['inline-code', 'MDInlineCode'], ['code', 'MDCode'],
+    \ ['strike', 'MDStrike'], ['highlight', 'MDHighlight'],
     \ ['link', 'MDLink'], ['image', 'MDImage'],
     \ ['table', 'MDTable'], ['footnote', 'MDFootnote'],
     \ ['indent-tree', 'IndentTree'],
